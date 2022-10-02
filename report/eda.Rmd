@@ -1,0 +1,202 @@
+# 3. Exploratory data analysis
+
+```{r, echo = FALSE, message = FALSE}
+source(here::here("scripts/setup.R"))
+data <- read.csv(file = here::here("Data/data.csv")) #load previously cleand file from data part
+
+```
+
+
+## 3.1 Categorical Data
+
+In our dataset, we have more properties accepting animals, and more properties that are not furnished. We can also observe that we have much more observation in São Paulo than in the other Brazilian cities. This might be explained by the fact that São Paulo is the most populated city in Brazil.
+
+```{r echo=FALSE, fig.dim = c(8,6)}
+p1 <- data %>%  # more houses accepting animals, than not. Lots in Sao Paulo, probably because we have more data in SP
+  ggplot(aes(animal, fill = animal)) +
+  geom_bar(stat= "count", show.legend = FALSE)+
+  scale_fill_manual(values=c("#006699", "#6699CC"))+
+  ylab("")+
+  facet_grid(.~city) +
+  ggtitle("Frequency of Properties Accepting Animals or Not, Furnished or Not")
+
+p2 <- data %>%  # more houses in our data set that are not furnished
+  ggplot(aes(furniture, fill = furniture)) +
+  geom_bar(stat= "count", show.legend = FALSE) +
+  scale_fill_manual(values=c("#006699", "#6699CC"))+
+  ylab("")+
+facet_grid(.~city)
+
+yleft <- textGrob("Frequency", rot = 90, gp = gpar(fontsize = 12))  #library(grid)
+
+grid.arrange(p1,p2, ncol = 1, left = yleft)
+           #  heights = c(5,5))
+```
+
+We also observe that if the property is accepting animals, it will have a higher rent. It is also the case, for the furniture feature, if it is already furnished, the rent will be higher. We can also see that rent is the highest in São Paulo.
+
+```{r echo=FALSE, warning = FALSE,  fig.dim = c(8,6)}
+data2 <- data %>% pivot_longer(c(hoa,rent,property_tax,fire_insurance), 
+                      names_to = "fees", 
+                      values_to = "fees_amount") 
+data2$fees <- as.factor(data2$fees) # transform into factor to be able to reorder them
+
+p3 <- data2 %>% filter(fees == "rent") %>% 
+  group_by(city, animal) %>% 
+  summarise(n = mean(fees_amount)) %>% # average rent in each city when you can have animals or no
+  #ungroup() %>%
+  ggplot(aes(animal,n, fill = animal)) +
+  geom_bar(stat= "identity", show.legend = FALSE) +
+  scale_fill_manual(values=c("#006699", "#6699CC"))+
+  facet_grid(.~ city) +
+  ylim(0,6000) +
+  ggtitle("Furnished and Accepting Animals Properties have Higher Rent")  +
+  ylab("")
+
+
+p4 <- data2 %>% filter(fees == "rent") %>% 
+  group_by(city, furniture) %>% 
+  summarise(n = mean(fees_amount)) %>% # more expensive when house furnished
+  ggplot(aes(furniture,n, fill = furniture)) +
+  geom_bar(stat= "identity", show.legend = FALSE) +
+  scale_fill_manual(values=c("#006699", "#6699CC")) +
+  ylim(0,6000) +
+  facet_grid(.~ city) +
+  ylab("")
+
+
+yleft <- textGrob("Average Rent (R$)", rot = 90, gp = gpar(fontsize = 12))  #library(grid)
+
+
+grid.arrange(p3,p4, left = yleft)
+```
+
+## 3.2 Numerical data
+
+We observe that if we own a house (floor = 0 often corresponds to this situation), the rent will be higher. It will also increase if you live on higher floors. As we could have expected, the rent is also increasing with the increasing number of parking spaces.
+<br />
+```{r echo=FALSE, out.height="100%", out.width="100%", warning = FALSE}
+#Does rent increase if floors increase? Yes
+data$floor <- factor(data$floor,levels = c("0","1","2","3","4","5","6","7","8","9-12","13-18","19+")) #to reorder the floor levels
+p5 <- data %>%
+  ggplot(aes(floor,rent), fill = floor) + 
+  geom_boxplot() +
+  xlab("Floor") +
+  ylab("Rent") +
+  ggtitle("Increasing Rent When Floor and Number of Parking Space increases")
+
+#p5 %>% ggplotly()
+
+p6 <- data %>%
+  ggplot(aes(as.factor(parking),rent)) + 
+  geom_boxplot() +   
+  xlab("Parking Spaces") +
+  ylab("Rent")
+
+#p6 %>% ggplotly()
+
+subplot(p5,p6, shareY =  TRUE, titleX = TRUE)
+
+```
+Globally, a change in the area seems to have a positive impact the rent price. Again, we see that we have more data in São Paulo. By plotting `rent`against `hoa` and `property_tax`, we have similar plots as the one below, therefore we are not displaying them.
+
+```{r echo=FALSE, out.height="70%", out.width="70%", warning = FALSE}
+#As we have seen several times, we have more data in Sao Paulo: rent - area - city
+p7 <- data %>% ggplot(aes(area,rent, colour = rent)) + 
+    geom_point(size = 1, show.legend = FALSE, alpha = 0.1) +
+    scale_x_log10() + 
+    scale_y_log10() + 
+    facet_wrap(.~ city) +
+  xlab("Area")+
+  ylab("Rent")+
+  ggtitle("Positive Correlation between Rent and Area")
+
+
+g1 <-  ggplotly(p7, width = 600, height = 500) %>% 
+  layout_ggplotly()
+htmltools::div(g1, align = "center") #to align ggplotly
+
+
+#p8 <- data %>%
+#  mutate(across(hoa, ~replace(., . == 0 , 1))) %>%
+#  ggplot(aes(hoa,rent)) + 
+#  scale_y_log10() +   #we log scale as we've seen that it was better when plotting the boxplots
+#  scale_x_log10() +
+#  geom_point(alpha = 0.1) + 
+#  facet_wrap(.~ city)+
+#  xlab("HOA (R$)")+
+#  ylab("Rent (R$)")+
+#  ggtitle("Positive Correlation between Rent and HOA")
+
+# p8 %>% ggplotly()  
+
+#p9 <- data %>% mutate(across(property_tax, ~replace(., . == 0 , 1))) %>%
+#  ggplot(aes(property_tax,rent)) + 
+#  geom_point(alpha = 0.1) +
+#  scale_x_log10() + 
+#  scale_y_log10() +
+#  facet_wrap(.~ city)+
+#  xlab("Property Tax (R$)")+
+#  ylab("Rent (R$)")+
+#  ggtitle("Positive Correlation between Rent and Property Tax")
+
+#p9 %>% ggplotly()  
+```
+
+## 3.3 Numerical & Categorical data
+
+
+```{r eval=FALSE, include=FALSE}
+# DON'T SHOW IN REPORT
+
+#Sao Paulo and Belo Horizonte have the highest rent
+data %>% group_by(city) %>% summarize(mean = mean(rent)) %>% 
+  ggplot(aes(x = reorder(city,-mean), 
+             y = mean,
+             )) +
+  geom_col()
+```
+
+It is interesting to see that São Paulo and Belo Horizonte have the highest rent. However, Rio de Janeiro total fees is higher than Belo Horizonte. Indeed, homeowners association tax in Rio is twice higher than the one in Belo Horizonte. The city with the highest rent in proportion to the total fees is Belo Horizonte: on average, rent represents about 80.7% of total fees.
+<br />
+```{r echo=FALSE,  out.height="100%", out.width= "100%", warning = FALSE}
+
+p9 <- data2 %>% group_by(city, fees) %>% # we want to plot the average fees by city
+  summarize(amount = round(mean(fees_amount)), 1)  %>% # average taxes, rent,.. amount for each city
+  mutate(fees = fct_relevel(fees, "rent", "hoa", "property_tax", "fire_insurance")) %>% # to reorder column fees when displaying plot
+  group_by(city) %>% mutate(total = round(sum(amount)),1) %>%  #to have the total fees by city
+  mutate("%fees" = round((amount/total * 100), 2)) %>% #digits = 2
+  ggplot(aes(x = reorder(city,-amount), #reorder from high to low fees city
+             y = amount, 
+             fill = fees,
+             text = paste('amount: ', amount,
+                          '</br>total fees: ', total  #to add label
+                           )
+             )) + 
+  geom_bar(stat="identity", position ="dodge") +
+  scale_fill_brewer(palette = "PuBu", direction = -1 ) + 
+  labs(x = "Cities", y ="Average Fees Amount (R$)", title = "Higher rent is in Sao Paulo") +
+  geom_text(aes(label = paste0(round(`%fees`, 1), "%")), #to put text above bars
+            position = position_dodge(0.9),
+            #color = "grey",
+            size = 2.5, #size of text
+            vjust = -0.5, 
+           )
+
+p9 %>% ggplotly(tooltip = c("fees", "text")) %>%
+  style(textposition = "top")
+
+```
+
+
+For our EDA, we kept the `total` variable, but to predict the `rent`, we need to remove it to avoid overfitting (as `rent` is included in `total`).
+As we have seen in the correlation part,  it is not necessary to keep `fire_insurance`, as it is highy correlated with the value we would like to predict. Indeed, it is computed from the `rent` variable. Therefore, we will remove it.
+
+```{r echo=FALSE}
+# We let total column for EDA, but we're removing it here 
+data <- data %>% select(-c("fire_insurance", "total")) 
+
+write.csv(data, file = here::here("Data/data.csv"), row.names = F)
+```
+
+

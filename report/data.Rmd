@@ -1,0 +1,441 @@
+# 2. Data
+
+```{r, echo = FALSE, message = FALSE, warning= FALSE}
+source(here::here("scripts/setup.R"))
+```
+We have found our dataset on Kaggle, a platform gathering an online data scientist community. There were two versions of the dataset, but we picked the second one as it was the most complete and recent one. This dataset contains 10'692 properties to rent:
+
+| Dataset | Source | Type | Observations | Features | Description |
+|:---|:---|:---|:---|:---|:-------|
+| Brazilian houses to rent v2| <https://www.kaggle.com> | CSV | 10'692 | 13 | city, area [m^2^], rooms, bathroom, parking spaces, floor, animals, furniture, in BRL (R$): HOA, rent amount, property tax, fire insurance, total|
+
+For the moment, we are keeping `total`, but we will remove it when we fit the models as the value we want to predict `rent` is contained in `total`.
+
+```{r}
+data <- read.csv(file = here::here("Data/houses_to_rent_v2.csv"), stringsAsFactors = TRUE) %>% 
+  #select(-13) %>% # we'll remove total column at the end of EDA
+  as_tibble()
+
+options(scipen = 999) #to not have exponential notation
+```
+
+## 2.1 Summary
+
+```{r dfSummary, results = "asis", echo = FALSE }
+# Add summarytools css
+st_css(bootstrap=FALSE) #to have a narrower width 
+# summarytable
+print(dfSummary(data, 
+                style ="grid",
+                plain.ascii = FALSE, # to display png graphs correctly
+                # graph.magnif = 0.75
+                valid.col = FALSE,
+                tmp.img.dir = "/tmp"),
+      headings = FALSE,
+      footnote = NA,
+      max.tbl.height = 400, #add scroll box
+      method = "render")
+```
+
+```{r eval=FALSE, include=FALSE}
+# str(data)
+
+head(data) %>% 
+  kable() %>% scroll_box(width = "900px")
+```
+
+## 2.2 Wrangling/cleaning
+
+### 2.2.1 Modifying variables
+
+Looking at the summary and head of our dataset, we observed that we need to modify some variables.
+We renamed some of them to have a correct display of their name.
+According to the author of the dataset, the value "-"  in `floor` feature correspond to houses on the ground level. Therefore, we changed it to 0. 
+
+```{r echo=FALSE}
+# renaming variables
+data <- data %>% rename(c(hoa = hoa..R.., 
+                          rent = rent.amount..R.., 
+                          property_tax = property.tax..R..,
+                          fire_insurance = fire.insurance..R..,
+                          parking = parking.spaces,
+                          total = total..R..))
+
+# Categorical variables -> we'll transform them into dummies when fitting the models
+data$animal <- str_replace(data$animal, "acept", "yes") 
+data$animal <- str_replace(data$animal, "not yes", "no") %>%  as_factor() 
+
+data$furniture <- str_replace(data$furniture, "furnished", "yes")
+data$furniture <- str_replace(data$furniture, "not yes", "no") %>% as_factor()
+
+# replace all "a" of São Paulo to not have weird characters
+data$city <- str_replace_all(data$city,"Ã£", "a") %>% 
+  as_factor() #otherwise it becomes chr
+
+#-> transform (-) into 0 --> can be ground floor or houses
+data$floor <- str_replace_all(data$floor,"-", "0")
+data$floor <- as.integer(data$floor) 
+
+
+head(data) %>% 
+  kable() 
+``` 
+
+### 2.2.2 Missing Data
+
+As seen in the last column of the summary, we don't have any missing values.
+```{r eval=FALSE, include=FALSE}
+data %>% freq.na # check NA's
+```
+
+### 2.2.3 Duplicates
+
+We have several instances that are duplicates. We only need to keep the first occurrence of the duplicates. By removing them, we go from 10'692 instances to 10'334 observations.
+
+```{r echo=FALSE}
+dup <- data %>% get_dupes() #from library janitor: gives duplicates
+
+head(dup) %>% select(-14) %>% #just remove col "dup"
+  kable() %>%
+  row_spec(2, strikeout = T, color = "darkred") %>%
+  row_spec(4, strikeout = T, color = "darkred") %>%
+  row_spec(6, strikeout = T, color = "darkred") 
+
+data <- data %>% distinct(.keep_all = TRUE) #keep the first occurrence of the duplicate, we have same results with unique()
+```
+
+### 2.2.4 Distribution of data and outliers
+
+Looking at some of the features in the summary, we see that there is a high possibility of having outliers in `area`, `hoa` and `property_tax`. We can quickly check all the features distribution with boxplots.
+
+
+```{r echo=FALSE, fig.dim = c(6,6)}
+# NO TRANSFORMATION
+## area - !!OUTLIERS !!
+a1 <- data %>% 
+  ggplot(aes(x= city, y=area))+
+  geom_boxplot(fill = "cornflowerblue") +
+  coord_flip()+
+  xlab("") +
+  ylab(expression(paste("Area [", m^2,"]", sep = "")))
+## rooms 
+a2 <- data %>% 
+  ggplot(aes(x= city, y=rooms))+
+  geom_boxplot(fill = "cornflowerblue")+
+  scale_y_continuous(breaks=seq(0,14,2)) + 
+  coord_flip()+
+  xlab("") +
+  ylab("Rooms")
+## bathrooms
+a3 <- data %>% 
+  ggplot(aes(x= city, y=bathroom))+
+  geom_boxplot(fill = "cornflowerblue")+
+  scale_y_continuous(breaks=seq(0,10,2)) +  # to show integer numbers in x axis
+  coord_flip()+
+  xlab("") +
+  ylab("Bathroom")
+## parking space
+a4 <- data %>% 
+  ggplot(aes(x= city, y=parking))+
+  geom_boxplot(fill = "cornflowerblue")+
+  scale_y_continuous(breaks=seq(0,12,2)) +  # to show integer numbers in x axis
+  coord_flip()+
+  xlab("") +
+  ylab("Parking")
+## floor - !!OUTLIERS!!
+data$floor <- as.integer(data$floor) 
+a5 <- data %>% 
+  #filter (floor<=81) %>% #don't look at outliers (>81)
+  ggplot(aes(city, y = floor))+
+  geom_boxplot(fill = "cornflowerblue")+
+  coord_flip()+
+  xlab("") +
+  ylab("Floors")
+# hoa - !!OUTLIERS!!
+a6 <- data %>% 
+  # mutate(across(hoa, ~replace(., . == 0 , 1))) %>% # so that when we log value = 1 -> we get 0
+  ggplot(aes(x= city, y=hoa))+
+  geom_boxplot(fill = "cornflowerblue") +
+  coord_flip()+
+  xlab("") +
+  ylab("HOA (R$)")
+
+# rent 
+a7 <- data %>% 
+  ggplot(aes(x= city, y=rent))+
+  geom_boxplot(fill = "cornflowerblue") +
+  coord_flip()+
+  xlab("") +
+  ylab("Rent (R$)")
+# property tax  !!OUTLIERS!!
+a8 <- data %>%  
+  # mutate(across(property_tax, ~replace(., . == 0 , 1))) %>% #transform 0 values into 1 
+  ggplot(aes(x= city, y= property_tax))+
+  geom_boxplot(fill = "cornflowerblue")+
+  coord_flip()+
+  xlab("") +
+  ylab("Property Tax (R$)")
+
+grid.arrange(a1,a2,a3,a4,a5,a6,a7,a8,
+             widths = c(1, 1),
+             top = textGrob("Data distribution", gp=gpar(fontsize=16)),
+             left = textGrob("City", rot = 90, gp = gpar(fontsize = 12)) )
+
+```
+We should try to apply to some of the features a log transformation to better see their distribution. But before applying the transformation, we should look into some visible outliers. As we had guessed, `area`, `hoa` and `property_tax` have some extreme values. `floor` and `rent` also seem to have outliers. By looking at the top 5 values of each of these features, we can find some discrepencies:
+<br />
+
+```{r echo=FALSE, fig.align="center"}
+# potential outliers
+
+# area - 3 potential "extreme" outliers
+t1 <- data %>% arrange(-area) %>% #classify area in decreasing order
+  select(city,area,floor, rent,hoa,property_tax) %>% 
+  slice(1:5) #select the top 5 houses with biggest area
+  
+t1 %>% kable(align = "lccccc") %>%
+  kable_styling(full_width = F,
+                position = "float_left")  %>% 
+  add_header_above(c("Highest Area (m2)" = 6)) %>%
+  row_spec(1:3 ,color = "darkred")  %>%
+  column_spec(2, background = "lightgrey")
+
+
+# hoa - 3 potential "extreme" outliers
+t2 <- data %>% arrange(-hoa) %>% #classify hoa in decreasing order
+  select(city,area,floor,rent,hoa,property_tax) %>% 
+  slice(1:5) 
+
+t2 %>% kable(align = "lccccc") %>%
+  kable_styling(full_width = F,
+                position = "left")  %>% 
+  add_header_above(c("Highest Hoa (R$)" = 6)) %>%
+  row_spec(1:5 ,color = "darkred") %>% 
+    column_spec(5, background = "lightgrey")
+
+```
+
+```{r echo=FALSE, fig.align="center"}
+#property tax - 1 potential "extreme" outlier
+t3 <- data %>% arrange(-property_tax) %>% #classify property tax in decreasing order
+  select(city, area,floor, rent, hoa, property_tax) %>% 
+  slice(1:5)
+
+t3 %>%  kable(align = "lccccc")  %>%
+  kable_styling(full_width = F,
+                position = "float_left")  %>% 
+  add_header_above(c("Highest Property Tax (R$)" = 6)) %>%
+  row_spec(1 ,color = "darkred")  %>%
+  column_spec(6, background = "lightgrey")
+
+# rent 
+t4 <- data %>% arrange(-rent) %>% #classify hoa in decreasing order
+  select(city, area,floor, rent, hoa, property_tax) %>% 
+  slice(1:5) 
+
+t4 %>% kable(align = "lccccc") %>%
+  kable_styling(full_width = F, 
+                position = "right")  %>% 
+  add_header_above(c("Highest Rent (R$)" = 6)) %>%
+  row_spec(4 ,color = "darkred") %>%
+  column_spec(4, background = "lightgrey")
+```
+
+**Area**: We observe 3 potential outliers.  It is improbable to have a property of 46'335 m2 at the 11th floor, or a 24'606 m2 and 12'732 m2 house at the 12th and 3rd floor. We will remove these values from our data set.
+
+**HOA**:The first five values are probably outliers, as HOA is way too high compared to the rent. Therefore, we will remove these five observations. We have also checked the values after the five first observations, but we didn't find anything abnormal. 
+
+**Property Tax**: It seems unlikely that for an area of 42m2, you pay 313'700 BRL of property tax. This is why we will remove this observation.
+
+**Rent**: The 3 highest rents seem very high, but knowing that they are houses (`floor` = 0), it is still possible. This is why we will keep these observations. However, for the 4th highest rent of our data set, it looks a bit suspicious to have a rent of 24'000 BRL for a 80m2 on 1st floor, knowing that the average rent per month is about 5000 BRL in the city centre [^1]. This is why we will remove this observation.
+
+```{r echo=FALSE}
+data <- data %>% filter(area < 10000)
+data <- data %>% filter(hoa < 30000)
+data <- data %>% filter(property_tax < 30000)
+data <- data %>% filter(!rent == 24000)
+```
+
+[^1]: NUMBEO: https://www.numbeo.com/cost-of-living/in/Sao-Paulo
+
+
+```{r echo=FALSE}
+data$city <- factor(data$city,levels = c("Belo Horizonte", "Campinas", "Rio de Janeiro", "Porto Alegre", "Sao Paulo")) # just to have our table below in alphabetical order
+                
+data %>% group_by (city) %>% 
+  summarize ( floor = max(floor)) %>% 
+  kable() %>%
+  kable_styling(full_width = F) %>%
+  add_header_above(c("Highest Floor by City" = 2)) %>%
+  row_spec(1:2 ,color = "darkred") %>%
+  column_spec(2, background = "lightgrey")
+
+data <- data %>% filter(floor <51)
+```
+
+**Floor**: By checking the highest buildings for each cities [^2], and comparing them with the highest floors of our data set, we see that we need to remove two outliers, as they have higher floors than in reality.
+
+```{undefined eval=FALSE, include=FALSE}
+#highest floors in Brazil 
+
+| City | Highest Floor |  
+|:---|:---:|
+| Belo Horizonte |42 |
+| Campinas | 31 |
+| Rio de Janeiro | 48 |
+| Porto Alegre | 32 |
+| Sao Paulo | 51 |
+```
+
+[^2]: EMPORIS: https://www.emporis.com/statistics/
+
+<br />
+After these outliers removal, we have 10'323 observations left. We can now log transform some features in our dataset.
+
+```{r echo=FALSE, fig.dim = c(6,6)}
+## area - !!OUTLIERS !!
+b1 <- data %>% 
+  ggplot(aes(x= city, y=area))+
+  scale_y_log10() +
+  geom_boxplot(fill = "cornflowerblue") +
+  coord_flip()+
+  xlab("") +
+  ylab(expression(paste("Area [", m^2,"]", sep = "")))
+## rooms 
+b2 <- data %>% 
+  ggplot(aes(x= city, y=rooms))+
+  geom_boxplot(fill = "cornflowerblue")+
+  scale_y_continuous(breaks=seq(0,14,2)) + 
+  coord_flip()+
+  xlab("") +
+  ylab("Rooms")
+## bathrooms
+b3 <- data %>% 
+  ggplot(aes(x= city, y=bathroom))+
+  geom_boxplot(fill = "cornflowerblue")+
+  scale_y_continuous(breaks=seq(0,10,2)) +  # to show integer numbers in x axis
+  coord_flip()+
+  xlab("") +
+  ylab("Bathroom")
+## parking space
+b4 <- data %>% 
+  ggplot(aes(x= city, y=parking))+
+  scale_y_continuous(breaks=seq(0,12,2)) +  # to show integer numbers in x axis
+  geom_boxplot(fill = "cornflowerblue")+
+  coord_flip()+
+  xlab("") +
+  ylab("Parking")
+## floor - !!OUTLIERS!!
+data$floor <- as.integer(data$floor) 
+b5 <- data %>% 
+ ggplot(aes(city, y = floor))+
+  geom_boxplot(fill = "cornflowerblue")+
+  coord_flip()+
+  xlab("") +
+  ylab("Floors")
+# hoa - !!OUTLIERS!!
+b6 <- data %>% 
+  mutate(across(hoa, ~replace(., . == 0 , 1))) %>%
+  ggplot(aes(x= city, y=hoa))+
+  scale_y_log10() +
+  geom_boxplot(fill = "cornflowerblue") +
+  coord_flip()+
+  xlab("") +
+  ylab("HOA (R$)")
+# rent 
+b7 <- data %>% 
+  ggplot(aes(x= city, y=rent))+
+  scale_y_log10() +
+  geom_boxplot(fill = "cornflowerblue") +
+  coord_flip()+
+  xlab("") +
+  ylab("Rent (R$)")
+# property tax  !!OUTLIERS!!
+b8 <- data %>%  
+  mutate(across(property_tax, ~replace(., . == 0 , 1))) %>% #transform 0 values into 1 
+  ggplot(aes(x= city, y= property_tax))+
+  scale_y_log10() +
+  geom_boxplot(fill = "cornflowerblue")+
+  coord_flip()+
+  xlab("") +
+  ylab("Property Tax (R$)")
+# boxplots = list(b1,b2,b3,b4,b5,b6,b7,b8)
+# grid.arrange(grobs=boxplots, ncol =2)
+grid.arrange(b1,b2,b3,b4,b5,b6,b7,b8, 
+             widths = c(1, 1),
+             top = textGrob("Distribution After Some Log-transformation",gp=gpar(fontsize=16)),
+             left = textGrob("City", rot = 90, gp = gpar(fontsize = 12)))
+
+```
+We observe for `hoa`, that the data distribution in São Paulo and Belo Horizonte is very large. This is due to the fact that for some properties, there is no homeowners association tax. 
+
+For the `floor` feature, we have decided to modify it into intervals:
+```{r echo=FALSE}
+#modifying floor to intervals
+data$floor <- as.factor(data$floor) 
+# length(unique(data$floor))
+# data%>%count(floor)
+
+data<-data %>% mutate(floor=fct_recode(floor,
+"0"="0",
+"9-12"="9",
+"9-12"="10",
+"9-12"="11",
+"9-12"="12",
+"13-18"="13",
+"13-18"="14",
+"13-18"="15",
+"13-18"="16",
+"13-18"="17",
+"13-18"="18",
+"19+"="19",
+"19+"="20",
+"19+"="21",
+"19+"="22",
+"19+"="23",
+"19+"="24",
+"19+"="25",
+"19+"="26",
+"19+"="27",
+"19+"="28",
+"19+"="29",
+"19+"="32",
+"19+"="35",
+"19+"="46"))
+# "19+"="51"
+# "19+"="301")) --> we removed these outliers
+
+#data %>% count(floor) %>%
+  #kable() %>%
+  #kable_styling(full_width = F)
+
+```
+
+|Floor | Count |Foor| Count|
+|:---|:---|:---|:---|
+|**0** |2371 |**6**|528|
+|**1** | 998 |**7**|487|
+|**2**| 952 |**8**|486|
+|**3** | 894 |**9-12**|1260|
+|**4** | 726 |**13-18**|783
+|**5**|580|**19+**|257|
+
+## 2.3 Correlation
+
+We see a very high correlation of 0.99 between `fire_insurance`, and the variable we would like to predict `rent`. We will need to remove this feature as `fire_insurance` is probably calculated from the `rent`. There is also as expected a high correlation with `total`. As we previously said, we will need to remove this variable when fitting the models, but we will keep it for our EDA.
+
+```{r echo=FALSE, fig.dim = c(8,8)}
+# Correlation matrix 
+
+#numerical variables
+data_num <- data %>% select(where(is.numeric)) #select only numerical features
+mcor <- cor(data_num)
+# Visualization correlation matrix: corrélogramme
+corrplot.mixed(mcor, lower.col = "black", number.cex = .7, tl.cex = .7) 
+```
+
+
+
+```{r, include=FALSE}
+write.csv(data, file = here::here("Data/data.csv"), row.names = F)
+```

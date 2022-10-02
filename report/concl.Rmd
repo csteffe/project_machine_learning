@@ -1,0 +1,15 @@
+# 5. Conclusion
+
+```{r, echo = FALSE, message = FALSE}
+source(here::here("scripts/setup.R"))
+```
+
+
+
+An important lesson to be drawn from this project is that the quality of a data set influences the predictive quality of the supervised learning models. Although, wide range models of data were tested due to the specific data set for this project, however, the predictive quality is just average.  
+
+This limitation is due to the presence of outliers in the data set and the relevance of some more or less correlated variables. There were some questions about the different levels of the `city` variable. As these are megacities, rent probably differs in the neighboring areas. If this was considered, precision would have been otherwise superior. Furthermore, the following variables could have provided interesting information for rent prediction: age of the property, type of property, crime rate, and the distance to the city center.  
+
+In the unsupervised learning section, the two methods were ineffective in the comprehension of the data. Nevertheless, it is highlighted that PCA method was not appropriate in contrast to PAM. The transformation of categorical variables into dummies is inconvenient when they are numerous and exclusive consideration of numerical variables loses a lot of variance explanation.   
+
+In conclusion, recommended model is the linear regression model of supervised learning. This is the model with the smallest errors [RMSE & MAE] and the most robust accuracy. Therefore, it's not surprising that this model is mostly used by estate agencies.  

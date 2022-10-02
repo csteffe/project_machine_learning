@@ -1,0 +1,12 @@
+---
+title: "House Rent Prediction in Brazil"
+author: "Laurène Hsieh, Aëllya Monney, Benoît Remy, Colin Steffe & Rémy Tombola"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r child = c('intro.Rmd', 'data.Rmd', 'eda.Rmd', 'analysis.Rmd', 'concl.Rmd')}
+```

@@ -1,0 +1,14 @@
+# 1. Introduction
+
+```{r, echo = FALSE, message = FALSE}
+source(here::here("scripts/setup.R"))
+```
+
+
+
+
+Machine learning applied for real estate industry is relevant, as it allows real estate companies to set selling prices or rent efficiently. Real estate agents only need to visit the property and gather necessary information (e.g., square meters, number of rooms, bathrooms, etc.) that are then translated to data. Thereafter, machine learning model provides rapid and efficient estimates. Rather than relying solely on the agents’ prediction, machine learning brings a more scientific and data driven approach which provides a benchmark that can be adjusted by the agent based on his/her experience and knowledge. 
+
+In this project, several models of supervised and unsupervised machine learning are used to predict housing and apartment rent in Brazil. The fact that the data set relies not on the prediction of the rent but of the country where the data is collected is what makes this project original. These types of data sets are commonly from the United States and are rarely from Latin America. 
+
+This project aims to analyze observations in order to have a better understanding of the data, through investigation of variables in the data set, processing different variable types (e.g., dummy, factor, numeric, categorical, etc.). Furthermore, discover the use of wide range models, discuss and compare them and finally select the best model regarding this data set.  
